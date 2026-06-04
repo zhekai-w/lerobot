@@ -1693,8 +1693,8 @@ def test_from_pretrained_nonexistent_path():
     """Test error handling when loading from non-existent sources."""
     from huggingface_hub.errors import HfHubHTTPError, HFValidationError
 
-    # Test with an invalid repo ID (too many slashes) - caught by HF validation
-    with pytest.raises(HFValidationError):
+    # Test with an invalid repo ID (too many slashes) - now explicitly raises FileNotFoundError for absolute paths
+    with pytest.raises(FileNotFoundError):
         RobotProcessor.from_pretrained("/path/that/does/not/exist")
 
     # Test with a non-existent but valid Hub repo format

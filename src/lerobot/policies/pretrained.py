@@ -100,9 +100,19 @@ class PreTrainedPolicy(nn.Module, HubMixin, abc.ABC):
             )
         model_id = str(pretrained_name_or_path)
         instance = cls(config, **kwargs)
+        if (
+            os.path.isabs(model_id)
+            or model_id.startswith(("./", "../", "~/"))
+        ) and not os.path.exists(model_id):
+            raise FileNotFoundError(f"Local path '{model_id}' does not exist.")
+
         if os.path.isdir(model_id):
             print("Loading weights from local directory")
             model_file = os.path.join(model_id, SAFETENSORS_SINGLE_FILE)
+            if not os.path.exists(model_file):
+                raise FileNotFoundError(
+                    f"{SAFETENSORS_SINGLE_FILE} not found in local directory {model_id}"
+                )
             policy = cls._load_as_safetensor(instance, model_file, config.device, strict)
         else:
             try:

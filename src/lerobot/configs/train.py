@@ -149,11 +149,19 @@ class TrainPipelineConfig(HubMixin):
     ) -> "TrainPipelineConfig":
         model_id = str(pretrained_name_or_path)
         config_file: str | None = None
+        if (
+            os.path.isabs(model_id)
+            or model_id.startswith(("./", "../", "~/"))
+        ) and not os.path.exists(model_id):
+            raise FileNotFoundError(f"Local path '{model_id}' does not exist.")
+
         if Path(model_id).is_dir():
             if TRAIN_CONFIG_NAME in os.listdir(model_id):
                 config_file = os.path.join(model_id, TRAIN_CONFIG_NAME)
             else:
-                print(f"{TRAIN_CONFIG_NAME} not found in {Path(model_id).resolve()}")
+                raise FileNotFoundError(
+                    f"{TRAIN_CONFIG_NAME} not found in local directory {Path(model_id).resolve()}"
+                )
         elif Path(model_id).is_file():
             config_file = model_id
         else:

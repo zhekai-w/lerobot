@@ -552,6 +552,12 @@ class RobotProcessor(ModelHubMixin):
         # Use the local variable name 'source' for clarity
         source = str(pretrained_model_name_or_path)
 
+        if (
+            os.path.isabs(source)
+            or source.startswith(("./", "../", "~/"))
+        ) and not os.path.exists(source):
+            raise FileNotFoundError(f"Local path '{source}' does not exist.")
+
         if Path(source).is_dir():
             # Local path - use it directly
             base_path = Path(source)

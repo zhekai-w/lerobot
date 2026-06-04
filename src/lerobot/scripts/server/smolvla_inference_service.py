@@ -81,17 +81,21 @@ class SmolVLAZMQServer:
         api_token: str | None,
         device: str,
         action_horizon: int,
-        azure_kinect_key: str,
-        wfov_key: str,
+        azure_kinect_key: str | None,
+        wfov_key: str | None,
         state_key: str,
     ):
         self.policy = policy
         self.device = device
         self.api_token = api_token
         self.action_horizon = action_horizon
-        self.azure_kinect_key = azure_kinect_key
-        self.wfov_key = wfov_key
         self.state_key = state_key
+
+        # Auto-detect image keys from policy if not explicitly specified
+        detected = list(policy.config.image_features.keys())
+        self.azure_kinect_key = azure_kinect_key if azure_kinect_key is not None else detected[0]
+        self.wfov_key = wfov_key if wfov_key is not None else (detected[1] if len(detected) > 1 else detected[0])
+        print(f"Image key mapping: video.azure_kinect -> {self.azure_kinect_key}, video.wfov -> {self.wfov_key}")
 
         self.running = True
         self.context = zmq.Context()
@@ -140,6 +144,7 @@ class SmolVLAZMQServer:
         gripper = obs["state.gripper"]
         task_list = obs["annotation.human.task_description"]
         task = task_list[0] if isinstance(task_list, (list, tuple)) else task_list
+        print(f"Task: {task}")
 
         batch = {
             self.azure_kinect_key: _image_to_tensor(kinect, self.device),
@@ -243,11 +248,11 @@ class ArgsConfig:
     action_horizon: int = 50
     """How many steps of the SmolVLA action chunk to return per get_action call."""
 
-    azure_kinect_key: str = "observation.images.azure_kinect"
-    """SmolVLA image key mapped from client's `video.azure_kinect`."""
+    azure_kinect_key: str | None = None
+    """SmolVLA image key for client's `video.azure_kinect`. Auto-detected from policy when None."""
 
-    wfov_key: str = "observation.images.wfov"
-    """SmolVLA image key mapped from client's `video.wfov`."""
+    wfov_key: str | None = None
+    """SmolVLA image key for client's `video.wfov`. Auto-detected from policy when None."""
 
     state_key: str = "observation.state"
     """SmolVLA state key."""
