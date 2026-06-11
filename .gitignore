@@ -173,3 +173,6 @@ outputs/
 
 # Dev folders
 .cache/*
+
+# Zack ignore
+eval_results/

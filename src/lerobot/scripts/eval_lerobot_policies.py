@@ -37,6 +37,53 @@ sys.path.insert(0, os.path.dirname(__file__))
 from filter_utils import savgol_chunk, rts_smoother_chunk, blend_chunk_boundary
 
 
+def compute_rms_jerk(traj: np.ndarray, dt: float) -> float:
+    """RMS jerk (third derivative of position) over a (T, D) trajectory."""
+    jerk = np.diff(traj, n=3, axis=0) / (dt ** 3)
+    return float(np.sqrt(np.mean(jerk ** 2)))
+
+
+def jerk_per_step(traj: np.ndarray, dt: float) -> np.ndarray:
+    """Per-timestep jerk norm. traj: (T, D). Returns (T-3,)."""
+    jerk = np.diff(traj, n=3, axis=0) / (dt ** 3)
+    return np.linalg.norm(jerk, axis=1)
+
+
+def plot_jerk(raw_traj: np.ndarray, filt_traj: np.ndarray, dt: float,
+              episode_id: int, save_path: str | None = None) -> None:
+    import matplotlib
+    if save_path:
+        matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    j_raw = jerk_per_step(raw_traj, dt)
+    j_filt = jerk_per_step(filt_traj, dt)
+    rms_raw = compute_rms_jerk(raw_traj, dt)
+    rms_filt = compute_rms_jerk(filt_traj, dt)
+    reduction = 100 * (rms_raw - rms_filt) / rms_raw if rms_raw > 0 else 0.0
+    t = np.arange(len(j_raw))
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(t, j_raw, label=f"raw  RMS={rms_raw:.2f}", alpha=0.7)
+    ax.plot(t, j_filt, label=f"filtered  RMS={rms_filt:.2f}  ({reduction:.1f}% reduction)", linestyle="--")
+    ax.set_yscale("log")
+    ax.set_title(f"Jerk Magnitude (‖d³q/dt³‖) — Episode {episode_id}", fontsize=13, fontweight="bold")
+    ax.set_xlabel("Time Step")
+    ax.set_ylabel("Jerk")
+    ax.legend(loc="upper right", framealpha=0.9)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    if save_path:
+        out = Path(save_path) / f"jerk_episode_{episode_id:04d}.png"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        print(f"  Saved jerk plot: {out}")
+    else:
+        plt.show()
+    plt.close(fig)
+
+
 def load_policy(policy_path: str, device: str):
     config = PreTrainedConfig.from_pretrained(policy_path)
     config.device = device
@@ -336,6 +383,8 @@ def main():
 
     # eval loop
     all_mse = []
+    all_jerk_raw: list = []
+    all_jerk_filtered: list = []
     all_inf_times = []
 
     for local_idx, global_ep_id in enumerate(tqdm(global_episode_ids, desc="Episodes")):
@@ -348,9 +397,20 @@ def main():
         all_mse.append(ep_mse)
         all_inf_times.extend(inf_times.tolist())
 
+        jerk_str = ""
+        if pred_raw is not None and len(pred_raw) >= 4:
+            rj_raw = compute_rms_jerk(pred_raw, args.dt)
+            rj_filt = compute_rms_jerk(pred, args.dt)
+            reduction = 100 * (rj_raw - rj_filt) / rj_raw if rj_raw > 0 else 0.0
+            all_jerk_raw.append(rj_raw)
+            all_jerk_filtered.append(rj_filt)
+            jerk_str = f"  jerk raw={rj_raw:.4f} filt={rj_filt:.4f} ({reduction:.1f}%↓)"
+            if not args.no_plot:
+                plot_jerk(pred_raw, pred, args.dt, global_ep_id, save_path=args.save_plot_path)
+
         print(
             f"  ep {global_ep_id}: steps={len(pred)}  MSE={ep_mse:.6f}  "
-            f"inf_mean={inf_times.mean()*1000:.1f}ms"
+            f"inf_mean={inf_times.mean()*1000:.1f}ms{jerk_str}"
         )
 
         if not args.no_plot:
@@ -371,6 +431,11 @@ def main():
     print(f"Std MSE            : {np.std(all_mse):.6f}")
     print(f"Mean inference time (per chunk): {np.mean(all_inf_times)*1000:.1f} ms")
     print(f"Min / Max inf time             : {np.min(all_inf_times)*1000:.1f} / {np.max(all_inf_times)*1000:.1f} ms")
+    if all_jerk_raw:
+        mean_raw = np.mean(all_jerk_raw)
+        mean_filt = np.mean(all_jerk_filtered)
+        reduction = 100 * (mean_raw - mean_filt) / mean_raw if mean_raw > 0 else 0.0
+        print(f"Mean RMS Jerk — raw: {mean_raw:.4f}  filtered: {mean_filt:.4f}  reduction: {reduction:.1f}%")
 
     if not args.no_plot and len(all_mse) > 1:
         plot_summary(all_mse, global_episode_ids, save_path=args.save_plot_path)
