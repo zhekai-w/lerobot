@@ -68,6 +68,9 @@ class WandBLogger:
 
         # Set up WandB.
         os.environ["WANDB_SILENT"] = "True"
+        # Disable wandb system/GPU stats so only training-related metrics are logged.
+        os.environ["WANDB_DISABLE_STATS"] = "True"
+        os.environ["WANDB_X_DISABLE_STATS"] = "True"
         import wandb
 
         wandb_run_id = (
@@ -92,6 +95,7 @@ class WandBLogger:
             job_type="train_eval",
             resume="must" if cfg.resume else None,
             mode=self.cfg.mode if self.cfg.mode in ["online", "offline", "disabled"] else "online",
+            settings=wandb.Settings(_disable_stats=True),
         )
         run_id = wandb.run.id
         # NOTE: We will override the cfg.wandb.run_id with the wandb run id.
